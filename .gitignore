@@ -6,3 +6,5 @@
 **/coverage/
 # Downloaded reference repository; not part of this project's source.
 /Mass_stacker/
+# Separate local clone, not part of this checkout.
+/stakers/
