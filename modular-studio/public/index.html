@@ -2,82 +2,201 @@
 <html lang="ko">
 <head>
  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
- <meta name="theme-color" content="#344dc6"><meta name="description" content="필지와 모듈 규격으로 건축 배치 후보를 탐색하는 모듈러 설계 스튜디오">
- <title>Module Ground — 모듈러 배치 스튜디오</title>
+ <meta name="theme-color" content="#0F6FFF"><meta name="description" content="필지와 모듈 규격으로 건축 배치 후보를 탐색하는 모듈러 설계자동화 스튜디오">
+ <title>Module Ground — 모듈러 설계자동화</title>
  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+ <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css"><link rel="stylesheet" href="/style.css">
  <script type="importmap">{"imports":{"three":"/vendor/three/build/three.module.js","three/addons/":"/vendor/three/examples/jsm/"}}</script>
 </head>
 <body>
  <header class="app-header">
-  <a class="brand" href="/" aria-label="Module Ground 홈"><svg width="32" height="34" viewBox="0 0 32 34" fill="none" aria-hidden="true"><path d="M2 9 16 1 30 9v16l-14 8L2 25Z" stroke="currentColor" stroke-width="2"/><path d="m2 9 14 8 14-8M16 17v16M9 5v16l14 8M23 5v16L9 29" stroke="currentColor" stroke-width="1.5"/></svg><span>Module<span class="brand-light">Ground</span><small>모듈러 배치 스튜디오</small></span></a>
+  <a class="brand" href="/" aria-label="Module Ground 홈"><svg width="28" height="30" viewBox="0 0 32 34" fill="none" aria-hidden="true"><path d="M2 9 16 1 30 9v16l-14 8L2 25Z" stroke="currentColor" stroke-width="2"/><path d="m2 9 14 8 14-8M16 17v16M9 5v16l14 8M23 5v16L9 29" stroke="currentColor" stroke-width="1.5"/></svg><span>Module<span class="brand-light">Ground</span><small>모듈러 설계자동화</small></span></a>
   <div class="project-header"><span class="project-dot"></span><span id="projectTitle">성수 스터디 대지</span><span id="sourceBadge" class="badge">예시 프로젝트</span></div>
-  <div class="header-actions"><span id="saveState" class="save-state">기기 내 저장</span><button id="openProject" class="button subtle">불러오기</button><button id="saveProject" class="button">프로젝트 저장 <span aria-hidden="true">↗</span></button><input type="file" id="projectFile" accept=".json" hidden></div>
+  <div class="header-actions"><span id="saveState" class="save-state">기기 내 저장</span><button id="openProject" class="button subtle">불러오기</button><button id="saveProject" class="button">프로젝트 저장 <span aria-hidden="true">↗</span></button><input type="file" id="projectFile" accept=".json" hidden><span class="user-chip" aria-hidden="true">담당자</span></div>
  </header>
- <main class="workspace">
-  <aside class="settings" aria-label="설계 조건">
-   <div class="panel-title"><h1>대지에서 모듈까지</h1><p>조건을 바꾸고, 가능한 배치를 찾으세요.</p></div>
-   <form id="designForm">
-    <section class="setting-section">
-     <div class="section-heading"><span class="step">1</span><h2>대지 선택</h2><button type="button" id="showMap" class="text-button">지도 열기</button></div>
-     <label class="full-label" for="siteAddress">대지 주소</label>
-     <div class="address-entry"><input id="siteAddress" type="search" placeholder="도로명 또는 지번 주소" autocomplete="street-address"><button type="button" id="findAddress" class="button primary">검색</button></div>
-     <div class="address-options"><label for="siteAddressType">주소 유형</label><select id="siteAddressType"><option value="auto">자동</option><option value="road">도로명</option><option value="parcel">지번</option></select><button type="button" id="connectVworld" class="text-button">VWorld 연결</button></div>
-     <p id="addressStatus" class="field-note" role="status">주소 검색을 준비하고 있습니다.</p><div id="siteAddressResults" class="address-results"></div>
-     <details class="sample-picker"><summary>예시 대지로 연습하기</summary><label class="full-label" for="sampleSelect">스터디 대지</label><select id="sampleSelect"></select></details>
-     <div class="site-facts"><div><span>경계 계산 면적</span><strong id="siteArea">— <small>㎡</small></strong></div><span class="parcel-glyph" aria-hidden="true">⬡</span></div>
-     <p id="siteDescription" class="field-note">실제 주소와 관계없는 예시 대지입니다.</p>
-    </section>
-    <section class="setting-section">
-     <div class="section-heading"><span class="step">2</span><h2>건축 조건</h2><span class="badge muted">사용자 가정</span></div>
-     <div class="field-grid">
-      <label>건폐율<div class="number-field"><input name="coverage" type="number" min="1" max="100" step="1" required><span>%</span></div></label>
-      <label>용적률<div class="number-field"><input name="far" type="number" min="1" max="1500" step="1" required><span>%</span></div></label>
-      <label>최고높이<div class="number-field"><input name="maxHeight" type="number" min="2" max="150" step="0.1" required><span>m</span></div></label>
-      <label>최대층수<div class="number-field"><input name="maxFloors" type="number" min="1" max="40" step="1" required><span>층</span></div></label>
+ <div class="app-body">
+  <nav class="side-nav" aria-label="화면 이동">
+   <button type="button" class="nav-item active" data-route="summary"><span class="nav-index">0</span><span class="nav-label">Summary</span><i class="nav-status" data-stage="summary"></i></button>
+   <button type="button" class="nav-item" data-route="site"><span class="nav-index">1</span><span class="nav-label">Site Analysis</span><i class="nav-status" data-stage="site"></i></button>
+   <button type="button" class="nav-item" data-route="units"><span class="nav-index">2</span><span class="nav-label">Modular Unit</span><i class="nav-status" data-stage="units"></i></button>
+   <button type="button" class="nav-item" data-route="cores"><span class="nav-index">3</span><span class="nav-label">Core</span><i class="nav-status" data-stage="cores"></i></button>
+   <button type="button" class="nav-item" data-route="building"><span class="nav-index">4</span><span class="nav-label">Building Plan</span><i class="nav-status" data-stage="building"></i></button>
+   <button type="button" class="nav-item" data-route="layout"><span class="nav-index">5</span><span class="nav-label">Site Layout</span><i class="nav-status" data-stage="layout"></i></button>
+  </nav>
+  <main class="workspace" id="workspace">
+   <aside class="settings" id="settingsAside" aria-label="설계 조건">
+    <div class="panel-title"><h1 id="panelTitle">대지 분석</h1><p id="panelSubtitle">주소를 검색하거나 지도에서 필지를 선택하세요.</p></div>
+    <form id="designForm">
+     <section class="setting-section" data-route="site">
+      <div class="section-heading"><span class="step">1</span><h2>대지 선택</h2><button type="button" id="showMap" class="text-button">지도 열기</button></div>
+      <label class="full-label" for="siteAddress">대지 주소</label>
+      <div class="address-entry"><input id="siteAddress" type="search" placeholder="도로명 또는 지번 주소" autocomplete="street-address" list="addressHistory"><button type="button" id="findAddress" class="button primary">검색</button></div>
+      <div class="address-options"><label for="siteAddressType">주소 유형</label><select id="siteAddressType"><option value="auto">자동</option><option value="road">도로명</option><option value="parcel">지번</option></select><button type="button" id="connectVworld" class="text-button">VWorld 연결</button></div>
+      <p id="addressStatus" class="field-note" role="status">주소 검색을 준비하고 있습니다.</p><div id="siteAddressResults" class="address-results"></div>
+      <details class="sample-picker"><summary>예시 대지로 연습하기</summary><label class="full-label" for="sampleSelect">스터디 대지</label><select id="sampleSelect"></select></details>
+      <div class="site-facts"><div><span>전체 대지 면적</span><strong id="siteArea">— <small>㎡</small></strong></div><span class="parcel-glyph" aria-hidden="true">⬡</span></div>
+      <p id="siteDescription" class="field-note">실제 주소와 관계없는 예시 대지입니다.</p>
+      <div id="landuseCard" class="landuse-card" hidden>
+       <span class="landuse-title">공공데이터(VWorld) 조회 결과</span>
+       <div class="landuse-row"><span>용도지역</span><strong id="landuseZone">—</strong></div>
+       <div class="landuse-row"><span>법정 건폐율 상한</span><strong id="landuseCoverage">—</strong></div>
+       <div class="landuse-row"><span>법정 용적률 범위</span><strong id="landuseFar">—</strong></div>
+       <p class="field-note" id="landuseNote"></p>
+      </div>
+      <div class="section-heading sub"><span class="step">04</span><h2>속성 / 기준</h2></div>
+      <div class="field-grid">
+       <label>건폐율 기준<div class="number-field"><input name="coverage" type="number" min="1" max="100" step="1" required><span>%</span></div></label>
+       <label>용적률 기준<div class="number-field"><input name="far" type="number" min="1" max="1500" step="1" required><span>%</span></div></label>
+      </div>
+      <button type="button" class="button review-complete" data-stage-button="site">검토 완료로 표시</button>
+     </section>
+     <section class="setting-section" data-route="layout">
+      <div class="section-heading"><span class="step">5</span><h2>배치 조건</h2><span class="badge muted">동 속성</span></div>
+      <div class="field-grid">
+       <label>최고높이<div class="number-field"><input name="maxHeight" type="number" min="2" max="150" step="0.1" required><span>m</span></div></label>
+       <label>최대층수<div class="number-field"><input name="maxFloors" type="number" min="1" max="40" step="1" required><span>층</span></div></label>
+      </div>
+      <label class="single-field">경계 이격거리<div class="number-field"><input name="setback" type="number" min="0" max="20" step="0.1" required><span>m</span></div></label>
+      <button type="button" class="button review-complete" data-stage-button="layout">검토 완료로 표시</button>
+     </section>
+     <section class="setting-section module-section" data-route="units">
+      <div class="section-heading"><span class="step">2</span><h2>단위세대 속성</h2><span class="badge blue">직접 입력</span></div>
+      <div class="unit-library">
+       <label class="full-label" for="unitTypeSelect">타입 목록</label>
+       <div class="unit-library-row"><select id="unitTypeSelect"></select><button type="button" id="unitTypeNew" class="button" title="새 타입">+ 새 타입</button><button type="button" id="unitTypeDelete" class="button subtle" title="삭제">삭제</button></div>
+      </div>
+      <div class="module-drawing"><svg viewBox="0 0 240 110" aria-label="폭, 길이, 높이를 갖는 직육면체 모듈"><path d="m65 42 85-27 51 29-85 29Z" fill="#e2e8fb" stroke="#8294d8"/><path d="m65 42 51 31v28L65 71Z" fill="#c0cef3" stroke="#8294d8"/><path d="m116 73 85-29v28l-85 29Z" fill="#eef1fb" stroke="#8294d8"/><path d="m56 38-13 6v33l13-5M72 83l38 23M127 106l76-26" fill="none" stroke="#4b64c5" stroke-width="1"/><text x="15" y="63">높이</text><text x="69" y="108">폭</text><text x="163" y="108">길이</text></svg><span>외곽 치수 기준</span></div>
+      <div class="field-grid thirds">
+       <label>폭<div class="number-field"><input name="width" type="number" min="1" max="15" step="0.1" required><span>m</span></div></label>
+       <label>길이<div class="number-field"><input name="length" type="number" min="1" max="25" step="0.1" required><span>m</span></div></label>
+       <label>반복 높이<div class="number-field"><input name="moduleHeight" type="number" min="2" max="6" step="0.1" required><span>m</span></div></label>
+      </div>
+      <p class="field-note">초기값은 예시입니다. 높이는 층간 접합을 포함한 반복 높이로 입력하세요.</p>
+      <details open><summary>접합·공용공간 설정</summary><div class="field-grid detail-fields">
+       <label>모듈 간격<div class="number-field"><input name="gap" type="number" min="0" max="1" step="0.01" required><span>m</span></div></label>
+       <label>세대당 모듈<div class="number-field"><input name="modulesPerUnit" type="number" min="1" max="10" step="1" required><span>개</span></div></label>
+      </div></details>
+      <button type="button" class="button review-complete" data-stage-button="units">검토 완료로 표시</button>
+     </section>
+     <div class="generate-area" data-route="layout"><button class="button primary generate" id="generate" type="submit"><span aria-hidden="true">▦</span> 모듈 배치 생성</button><p id="dirtyNote">입력 조건 기준의 배치 후보입니다.</p></div>
+    </form>
+   </aside>
+   <section class="canvas-panel" id="canvasPanel" aria-label="배치 시각화">
+    <div class="view-toolbar"><div class="segmented" role="group" aria-label="작업 화면"><button id="view3d" class="active" aria-pressed="true">3D 배치</button><button id="viewMap" aria-pressed="false">대지 지도</button></div><div class="view-options"><button id="planView" class="tool-button" title="평면 보기">평면</button><button id="isoView" class="tool-button active" title="입체 보기">입체</button><button id="resetView" class="tool-button" title="시점 초기화">⟲</button></div></div>
+    <div id="viewport"><div class="viewport-label"><span class="tiny-line"></span><span id="viewTitle">모듈 수 우선</span><span class="badge">배치 후보</span></div><div class="north" aria-label="북쪽">N<span>↑</span></div><div class="scene-caption"><span>드래그 회전</span><span>휠 확대</span><span>모듈 클릭으로 상세 보기</span></div><div id="moduleTooltip" class="module-tooltip" hidden></div><div id="sceneError" class="scene-error" hidden></div></div>
+    <div id="mapPanel" hidden><div class="map-search"><form id="searchForm"><select id="addressType" aria-label="주소 유형"><option value="parcel">지번</option><option value="road">도로명</option></select><input id="addressInput" placeholder="주소를 검색하거나 지도에서 필지를 선택하세요" aria-label="주소 검색" list="addressHistory"><button class="button primary">검색</button></form><div id="searchResults"></div></div><div id="map"></div><div id="mapSetup" class="map-setup" hidden><span class="map-icon">⌖</span><h2>실제 대지와 연결하세요</h2><p>VWorld API 키를 설정하면 주소 검색과<br>지도 클릭으로 필지 경계를 가져올 수 있습니다.</p><code>.env → VWORLD_API_KEY</code><p class="field-note">지금은 예시 대지에서 배치를 검토할 수 있습니다.</p><button id="return3d" class="button">예시 배치로 돌아가기</button></div></div>
+    <div class="scene-controls"><div class="legend"><span><i class="module-swatch"></i>모듈</span><span><i class="core-swatch"></i>공용 코어</span><span><i class="corridor-swatch"></i>복도</span></div><div class="scene-toggles"><label><input type="checkbox" id="envelopeToggle">높이 외곽</label><label><input type="checkbox" id="explodeToggle">층 분리</label></div></div>
+    <div class="floor-control"><label for="floorRange">층별 보기</label><input type="range" id="floorRange" min="0" max="6" value="0"><output id="floorOutput">전체 층</output></div>
+    <div class="metric-strip"><div><span>건축면적</span><strong id="metricFootprint">—</strong><small>㎡</small></div><div><span>연면적 추정</span><strong id="metricGfa">—</strong><small>㎡</small></div><div><span>최고높이</span><strong id="metricHeight">—</strong><small>m</small></div><div><span>지상층수</span><strong id="metricFloors">—</strong><small>층</small></div></div>
+   </section>
+   <aside class="results" id="resultsAside" aria-label="배치 결과">
+    <div class="result-heading"><h2>배치 리포트</h2><span class="live-dot">계산 완료</span></div>
+    <div class="count-panel"><span>배치 가능한 모듈</span><div><strong id="moduleCount">—</strong><span>개</span></div><p id="unitCount">모듈 규격 기준으로 계산합니다.</p><div class="count-breakdown" id="countBreakdown"></div></div>
+    <section class="result-section"><h3>조건 사용률</h3><div id="utilization"></div></section>
+    <section class="result-section"><div class="section-heading"><h3>배치 대안</h3><span class="secondary">상위 후보 비교</span></div><div id="alternatives" class="alternatives"></div></section>
+    <section class="result-section insight"><span class="insight-icon">↳</span><div><h3>배치 해석</h3><p id="insightText">배치를 생성하고 제한 요인을 확인하세요.</p></div></section>
+    <section class="result-section floor-list"><h3>층별 모듈</h3><div id="floorList"></div></section>
+    <button id="exportCsv" class="button export">모듈 목록 내보내기 <span>↓</span></button>
+    <button type="button" class="button review-complete" data-stage-button="layout" style="width:100%">검토 완료로 표시</button>
+    <p class="scope-note">사용자 가정 조건 · 중복도형 후보 탐색<br>구조·피난·일조·주차 규정은 미검토입니다.</p>
+   </aside>
+
+   <section class="route-page" id="summaryPanel" hidden aria-label="Summary">
+    <div class="route-page-head"><h1>0 Summary</h1><p>프로젝트 전체 상태와 대표 배치안 결과를 확인하고 다음 작업으로 이동합니다.</p></div>
+    <div class="summary-grid">
+     <div class="summary-card wide">
+      <h3>01 프로젝트 개요</h3>
+      <div class="summary-project"><strong id="summaryProjectName">—</strong><span id="summaryProjectAddress">—</span></div>
      </div>
-     <label class="single-field">경계 이격거리<div class="number-field"><input name="setback" type="number" min="0" max="20" step="0.1" required><span>m</span></div></label>
-    </section>
-    <section class="setting-section module-section">
-     <div class="section-heading"><span class="step">3</span><h2>모듈 규격</h2><span class="badge blue">직접 입력</span></div>
-     <div class="module-drawing"><svg viewBox="0 0 240 110" aria-label="폭, 길이, 높이를 갖는 직육면체 모듈"><path d="m65 42 85-27 51 29-85 29Z" fill="#e2e8fb" stroke="#8294d8"/><path d="m65 42 51 31v28L65 71Z" fill="#c0cef3" stroke="#8294d8"/><path d="m116 73 85-29v28l-85 29Z" fill="#eef1fb" stroke="#8294d8"/><path d="m56 38-13 6v33l13-5M72 83l38 23M127 106l76-26" fill="none" stroke="#4b64c5" stroke-width="1"/><text x="15" y="63">높이</text><text x="69" y="108">폭</text><text x="163" y="108">길이</text></svg><span>외곽 치수 기준</span></div>
-     <div class="field-grid thirds">
-      <label>폭<div class="number-field"><input name="width" type="number" min="1" max="15" step="0.1" required><span>m</span></div></label>
-      <label>길이<div class="number-field"><input name="length" type="number" min="1" max="25" step="0.1" required><span>m</span></div></label>
-      <label>반복 높이<div class="number-field"><input name="moduleHeight" type="number" min="2" max="6" step="0.1" required><span>m</span></div></label>
+     <div class="summary-card wide">
+      <h3>02 단계 진행 현황</h3>
+      <div class="stage-track" id="stageTrack"></div>
      </div>
-     <p class="field-note">초기값은 예시입니다. 높이는 층간 접합을 포함한 반복 높이로 입력하세요.</p>
-     <details><summary>접합·공용공간 설정</summary><div class="field-grid detail-fields">
-      <label>모듈 간격<div class="number-field"><input name="gap" type="number" min="0" max="1" step="0.01" required><span>m</span></div></label>
-      <label>중앙 복도 폭<div class="number-field"><input name="corridor" type="number" min="1" max="6" step="0.1" required><span>m</span></div></label>
-      <label>코어 예약 길이<div class="number-field"><input name="core" type="number" min="1" max="15" step="0.1" required><span>m</span></div></label>
-      <label>세대당 모듈<div class="number-field"><input name="modulesPerUnit" type="number" min="1" max="10" step="1" required><span>개</span></div></label>
-     </div><p class="field-note">중복도형, 단부 코어, 상하 정렬 적층을 탐색합니다. 코어는 공간 예약이며 계단·피난 설계가 아닙니다.</p></details>
-    </section>
-    <div class="generate-area"><button class="button primary generate" id="generate" type="submit"><span aria-hidden="true">▦</span> 모듈 배치 생성</button><p id="dirtyNote">입력 조건 기준의 배치 후보입니다.</p></div>
-   </form>
-  </aside>
-  <section class="canvas-panel" aria-label="배치 시각화">
-   <div class="view-toolbar"><div class="segmented" role="group" aria-label="작업 화면"><button id="view3d" class="active" aria-pressed="true">3D 배치</button><button id="viewMap" aria-pressed="false">대지 지도</button></div><div class="view-options"><button id="planView" class="tool-button" title="평면 보기">평면</button><button id="isoView" class="tool-button active" title="입체 보기">입체</button><button id="resetView" class="tool-button" title="시점 초기화">⟲</button></div></div>
-   <div id="viewport"><div class="viewport-label"><span class="tiny-line"></span><span id="viewTitle">모듈 수 우선</span><span class="badge">배치 후보</span></div><div class="north" aria-label="북쪽">N<span>↑</span></div><div class="scene-caption"><span>드래그 회전</span><span>휠 확대</span><span>모듈 클릭으로 상세 보기</span></div><div id="moduleTooltip" class="module-tooltip" hidden></div><div id="sceneError" class="scene-error" hidden></div></div>
-   <div id="mapPanel" hidden><div class="map-search"><form id="searchForm"><select id="addressType" aria-label="주소 유형"><option value="parcel">지번</option><option value="road">도로명</option></select><input id="addressInput" placeholder="주소를 검색하거나 지도에서 필지를 선택하세요" aria-label="주소 검색"><button class="button primary">검색</button></form><div id="searchResults"></div></div><div id="map"></div><div id="mapSetup" class="map-setup" hidden><span class="map-icon">⌖</span><h2>실제 대지와 연결하세요</h2><p>VWorld API 키를 설정하면 주소 검색과<br>지도 클릭으로 필지 경계를 가져올 수 있습니다.</p><code>.env → VWORLD_API_KEY</code><p class="field-note">지금은 예시 대지에서 배치를 검토할 수 있습니다.</p><button id="return3d" class="button">예시 배치로 돌아가기</button></div></div>
-   <div class="scene-controls"><div class="legend"><span><i class="module-swatch"></i>모듈</span><span><i class="core-swatch"></i>공용 코어</span><span><i class="corridor-swatch"></i>복도</span></div><div class="scene-toggles"><label><input type="checkbox" id="envelopeToggle">높이 외곽</label><label><input type="checkbox" id="explodeToggle">층 분리</label></div></div>
-   <div class="floor-control"><label for="floorRange">층별 보기</label><input type="range" id="floorRange" min="0" max="6" value="0"><output id="floorOutput">전체 층</output></div>
-   <div class="metric-strip"><div><span>건축면적</span><strong id="metricFootprint">—</strong><small>㎡</small></div><div><span>연면적 추정</span><strong id="metricGfa">—</strong><small>㎡</small></div><div><span>최고높이</span><strong id="metricHeight">—</strong><small>m</small></div><div><span>지상층수</span><strong id="metricFloors">—</strong><small>층</small></div></div>
-  </section>
-  <aside class="results" aria-label="배치 결과">
-   <div class="result-heading"><h2>배치 리포트</h2><span class="live-dot">계산 완료</span></div>
-   <div class="count-panel"><span>배치 가능한 모듈</span><div><strong id="moduleCount">—</strong><span>개</span></div><p id="unitCount">모듈 규격 기준으로 계산합니다.</p><div class="count-breakdown" id="countBreakdown"></div></div>
-   <section class="result-section"><h3>조건 사용률</h3><div id="utilization"></div></section>
-   <section class="result-section"><div class="section-heading"><h3>배치 대안</h3><span class="secondary">상위 후보 비교</span></div><div id="alternatives" class="alternatives"></div></section>
-   <section class="result-section insight"><span class="insight-icon">↳</span><div><h3>배치 해석</h3><p id="insightText">배치를 생성하고 제한 요인을 확인하세요.</p></div></section>
-   <section class="result-section floor-list"><h3>층별 모듈</h3><div id="floorList"></div></section>
-   <button id="exportCsv" class="button export">모듈 목록 내보내기 <span>↓</span></button>
-   <p class="scope-note">사용자 가정 조건 · 중복도형 후보 탐색<br>구조·피난·일조·주차 규정은 미검토입니다.</p>
-  </aside>
- </main>
- <footer class="statusbar"><span><i></i><span id="connectionStatus">예시 대지 모드</span></span><span id="solverStatus">모듈 규격과 필지 경계를 기준으로 배치합니다.</span><span>Module Ground / 0.1</span></footer>
- <dialog id="vworldDialog"><form id="vworldForm"><div class="section-heading"><h2>VWorld 연결 설정</h2><button type="button" id="closeVworld" class="text-button">닫기</button></div><p>발급받은 키로 주소를 검색하고 필지 경계를 가져옵니다. 키는 이 PC의 서버 설정에만 저장됩니다.</p><label>API 키<input id="vworldKey" type="password" required autocomplete="off" placeholder="발급받은 API 키"></label><label>VWorld에 등록한 서비스 URL<input id="vworldDomain" type="url" required value="http://localhost:8791"></label><p><a href="https://www.vworld.kr" target="_blank" rel="noopener">VWorld에서 키 발급·서비스 권한 확인 ↗</a></p><p id="vworldStatus" role="status"></p><button id="submitVworld" class="button primary">연결 확인 후 저장</button></form></dialog>
+     <div class="summary-card">
+      <h3>03 배치안과 핵심 지표</h3>
+      <div class="kpi-grid" id="summaryKpis"></div>
+     </div>
+     <div class="summary-card">
+      <h3>04 배치 미리보기</h3>
+      <p class="field-note">대표 배치안 요약입니다. 상세 편집은 5 Site Layout에서 진행하세요.</p>
+      <div id="summaryPreview" class="summary-preview">배치 결과가 없습니다.</div>
+     </div>
+     <div class="summary-card wide">
+      <h3>05 검토 항목</h3>
+      <ul id="summaryIssues" class="summary-issues"></ul>
+     </div>
+    </div>
+    <div class="route-page-cta"><button type="button" class="button primary" id="summaryContinue">작업 이어하기</button></div>
+    <p class="scope-note">화면 구조 예시입니다. 표시 수치는 마지막 배치 계산 결과를 반영하며 법규 검토를 대신하지 않습니다.</p>
+   </section>
+
+   <section class="route-page" id="coresPanel" hidden aria-label="Core">
+    <div class="route-page-head"><h1>3 Core</h1><p>계단·엘리베이터·홀·설비 공간과 복도 연결점을 갖는 코어 타입을 작성합니다.</p></div>
+    <div class="editor-grid">
+     <div class="editor-list">
+      <h3>01 타입 목록</h3>
+      <button type="button" class="editor-list-item active">타입 A</button>
+      <button type="button" class="editor-list-item">+ 새 타입</button>
+      <p class="field-note sample-flag">샘플 화면 · 추후 연결</p>
+     </div>
+     <div class="editor-canvas">
+      <h3>03 코어 도면</h3>
+      <svg viewBox="0 0 260 160" class="core-diagram" aria-label="계단, 홀, 승강기 배치 예시">
+       <rect x="10" y="10" width="240" height="140" rx="6" fill="#f5f7fc" stroke="#dbe1ee"/>
+       <rect x="24" y="24" width="70" height="56" rx="4" fill="#dce3f7" stroke="#8294d8"/><text x="59" y="56" text-anchor="middle" font-size="12" fill="#4b5a86">계단</text>
+       <rect x="104" y="24" width="60" height="56" rx="4" fill="#eef1fb" stroke="#8294d8"/><text x="134" y="56" text-anchor="middle" font-size="12" fill="#4b5a86">홀</text>
+       <rect x="174" y="24" width="66" height="56" rx="4" fill="#c0cef3" stroke="#8294d8"/><text x="207" y="56" text-anchor="middle" font-size="12" fill="#4b5a86">EV</text>
+       <line x1="59" y1="80" x2="59" y2="120" stroke="#dc793f" stroke-width="2" stroke-dasharray="4 3"/><text x="59" y="134" text-anchor="middle" font-size="10" fill="#dc793f">복도 연결점</text>
+      </svg>
+     </div>
+     <div class="editor-props">
+      <h3>04 속성 / 기준</h3>
+      <label class="single-field">이름<div class="number-field"><input type="text" value="타입 A" disabled></div></label>
+      <div class="field-grid">
+       <label>폭<div class="number-field"><input type="number" value="8" disabled><span>m</span></div></label>
+       <label>길이<div class="number-field"><input type="number" value="6" disabled><span>m</span></div></label>
+      </div>
+      <label class="single-field">코어 예약 길이<div class="number-field"><input name="core" type="number" min="1" max="15" step="0.1" form="designForm" required><span>m</span></div></label>
+      <p class="field-note">코어 예약 길이는 배치 계산(5 Site Layout)에 그대로 사용됩니다. 그 외 코어 형상 편집은 샘플입니다.</p>
+     </div>
+    </div>
+    <div class="route-page-cta"><button type="button" class="button review-complete" data-stage-button="cores">검토 완료로 표시</button></div>
+    <p class="scope-note">화면 구조 예시입니다. 코어 형상·연결점 편집 기능은 이번 범위에서 제외되었습니다.</p>
+   </section>
+
+   <section class="route-page" id="buildingPanel" hidden aria-label="Building Plan">
+    <div class="route-page-head"><h1>4 Building Plan</h1><p>단위세대·코어·복도를 조합해 반복 기준층을 갖는 하나의 동 타입을 만듭니다.</p></div>
+    <div class="editor-grid">
+     <div class="editor-list">
+      <h3>01 Unit / Core 라이브러리</h3>
+      <div id="buildingUnitLibrary"></div>
+      <p class="field-note sample-flag">Core 목록은 샘플 화면 · 추후 연결</p>
+     </div>
+     <div class="editor-canvas">
+      <h3>03 기준층 도면</h3>
+      <svg viewBox="0 0 260 140" class="floorplan-diagram" aria-label="세대와 복도, 코어 연결 예시">
+       <rect x="10" y="55" width="240" height="14" fill="#eef1fb" stroke="#c7d1ef"/><text x="130" y="65" text-anchor="middle" font-size="9" fill="#4b5a86">복도</text>
+       <g fill="#dce3f7" stroke="#8294d8"><rect x="10" y="10" width="52" height="40"/><rect x="70" y="10" width="52" height="40"/><rect x="138" y="10" width="52" height="40"/><rect x="198" y="10" width="52" height="40"/></g>
+       <g fill="#c0cef3" stroke="#8294d8"><rect x="10" y="75" width="52" height="55"/></g>
+       <text x="130" y="30" text-anchor="middle" font-size="9" fill="#4b5a86">세대</text>
+       <text x="36" y="105" text-anchor="middle" font-size="9" fill="#4b5a86">코어</text>
+      </svg>
+     </div>
+     <div class="editor-props">
+      <h3>04 인스턴스 속성</h3>
+      <label class="single-field">중앙 복도 폭<div class="number-field"><input name="corridor" type="number" min="1" max="6" step="0.1" form="designForm" required><span>m</span></div></label>
+      <p class="field-note">복도 폭은 배치 계산(5 Site Layout)에 그대로 사용됩니다. 세대·코어 조합 배치는 샘플 도면입니다.</p>
+     </div>
+    </div>
+    <div class="route-page-cta"><button type="button" class="button review-complete" data-stage-button="building">검토 완료로 표시</button></div>
+    <p class="scope-note">화면 구조 예시입니다. 세대·코어 자동 배치 기능은 이번 범위에서 제외되었습니다.</p>
+   </section>
+  </main>
+ </div>
+ <footer class="statusbar"><span><i></i><span id="connectionStatus">예시 대지 모드</span></span><span id="solverStatus">모듈 규격과 필지 경계를 기준으로 배치합니다.</span><span>Module Ground / 0.2</span></footer>
+ <dialog id="vworldDialog" class="connect-dialog"><form id="vworldForm"><div class="section-heading"><h2>VWorld 연결 설정</h2><button type="button" id="closeVworld" class="text-button">닫기</button></div><p>발급받은 키로 주소를 검색하고 필지 경계를 가져옵니다. 키는 이 PC의 서버 설정에만 저장됩니다.</p><label>API 키<input id="vworldKey" type="password" required autocomplete="off" placeholder="발급받은 API 키"></label><label>VWorld에 등록한 서비스 URL<input id="vworldDomain" type="url" required value="http://localhost:8791"></label><p><a href="https://www.vworld.kr" target="_blank" rel="noopener">VWorld에서 키 발급·서비스 권한 확인 ↗</a></p><p id="vworldStatus" class="connect-status" role="status"></p><button id="submitVworld" class="button primary">연결 확인 후 저장</button></form></dialog>
+ <datalist id="addressHistory"></datalist>
  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
  <script src="/vendor/leaflet/leaflet.js"></script><script type="module" src="/app.js"></script>
 </body></html>

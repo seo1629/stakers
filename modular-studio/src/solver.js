@@ -21,12 +21,7 @@ export function fits(rect,polygon,setback){
  for(const ring of polygon)for(let i=0;i<ring.length-1;i++)for(let j=0;j<4;j++)if(segmentDistance(rect[j],rect[j+1],ring[i],ring[i+1])<setback-EPS)return false;
  return true;
 }
-export function validateInput(input){
- const p={...DEFAULTS,...input.params};
- const ranges={width:[1,15],length:[1,25],moduleHeight:[2,6],gap:[0,1],corridor:[1,6],core:[1,15],coverage:[1,100],far:[1,1500],maxHeight:[2,150],maxFloors:[1,40],setback:[0,20],modulesPerUnit:[1,10]};
- for(const [k,[min,max]]of Object.entries(ranges))if(typeof p[k]!=='number'||!Number.isFinite(p[k])||p[k]<min||p[k]>max)throw new Error(`${k}: ${min}~${max} 범위의 숫자를 입력하세요.`);
- if(!Number.isInteger(p.maxFloors)||!Number.isInteger(p.modulesPerUnit))throw new Error('최대 층수와 세대당 모듈 수는 정수여야 합니다.');
- const polygon=input.polygon;
+export function validatePolygon(polygon){
  if(!Array.isArray(polygon)||!polygon.length||polygon.length>15)throw new Error('유효한 단일 필지 Polygon이 필요합니다.');
  let points=0;
  for(const ring of polygon){
@@ -38,6 +33,14 @@ export function validateInput(input){
  const area=polygonArea(polygon),b=bounds(polygon[0]);
  if(area<10||area>30000||b.maxX-b.minX>350||b.maxY-b.minY>350)throw new Error('현재 버전은 면적 10~30,000㎡, 가로·세로 350m 이하 대지를 지원합니다.');
  const union=clipping.union(polygon); if(Math.abs(multiArea(union)-area)>0.01)throw new Error('필지 경계가 교차하거나 구멍이 겹칩니다.');
+ return {polygon,area};
+}
+export function validateInput(input){
+ const p={...DEFAULTS,...input.params};
+ const ranges={width:[1,15],length:[1,25],moduleHeight:[2,6],gap:[0,1],corridor:[1,6],core:[1,15],coverage:[1,100],far:[1,1500],maxHeight:[2,150],maxFloors:[1,40],setback:[0,20],modulesPerUnit:[1,10]};
+ for(const [k,[min,max]]of Object.entries(ranges))if(typeof p[k]!=='number'||!Number.isFinite(p[k])||p[k]<min||p[k]>max)throw new Error(`${k}: ${min}~${max} 범위의 숫자를 입력하세요.`);
+ if(!Number.isInteger(p.maxFloors)||!Number.isInteger(p.modulesPerUnit))throw new Error('최대 층수와 세대당 모듈 수는 정수여야 합니다.');
+ const {polygon,area}=validatePolygon(input.polygon);
  return {params:p,polygon,area};
 }
 export function solve(input){

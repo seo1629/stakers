@@ -1,9 +1,10 @@
 import {createViewport} from './viewport.js';
 const $=id=>document.getElementById(id),form=$('designForm');
-const state={config:null,site:null,params:null,result:null,active:'maximum',dirty:false};
+const state={config:null,site:null,params:null,result:null,active:'maximum',dirty:false,landuse:null};
 let viewport,map,parcelLayer,requestVersion=0,parcelVersion=0,searchVersion=0,toastTimer;
 let baseLayer,cadastralLayer,mapMode='base',cadastralFailed=false;
 let searchMarker;
+let drawMode=false,drawParcels=[],drawParcelLayers=[];
 function locateAddress(item){
  const lon=Number(item.point?.x),lat=Number(item.point?.y);
  if(!Number.isFinite(lon)||!Number.isFinite(lat)||lon<124||lon>132||lat<33||lat>39)return false;
@@ -21,9 +22,52 @@ function locateAddress(item){
  searchMarker.bindPopup(popup,{maxWidth:270,autoPanPaddingTopLeft:[25,135],autoPanPaddingBottomRight:[25,165]}).openPopup();
  return true;
 }
-const mapChrome=document.createElement('div');mapChrome.className='map-mode-controls';mapChrome.innerHTML='<div class="segmented" role="group" aria-label="지도 종류"><button id="mapBase" class="active" aria-pressed="true">일반지도</button><button id="mapCadastral" aria-pressed="false">지적도</button><button id="mapOverlay" aria-pressed="false">중첩 보기</button></div><p id="cadastralStatus" role="status"></p>';$('mapPanel').append(mapChrome);
+const mapChrome=document.createElement('div');mapChrome.className='map-mode-controls';mapChrome.innerHTML='<div class="segmented" role="group" aria-label="지도 종류"><button id="mapBase" class="active" aria-pressed="true">일반지도</button><button id="mapCadastral" aria-pressed="false">지적도</button><button id="mapOverlay" aria-pressed="false">중첩 보기</button></div><button id="drawToggle" type="button" class="button">여러 필지 선택(합필)</button><button id="zoneToggle" type="button" class="button" hidden aria-pressed="false">용도지역 보기</button><p id="cadastralStatus" role="status"></p>';$('mapPanel').append(mapChrome);
+let zoneLayer=null,zoneVisible=false;
+function updateZoneToggle(){const show=!!state.config.vworld;$('zoneToggle').hidden=!show;if(!show&&zoneVisible)toggleZoneLayer(false);}
+let zoneTileErrorShown=false;
+function toggleZoneLayer(on){
+ zoneVisible=on;$('zoneToggle').classList.toggle('active',on);$('zoneToggle').setAttribute('aria-pressed',on);
+ if(!map)return;
+ if(on){
+  if(!zoneLayer){
+   zoneTileErrorShown=false;
+   zoneLayer=L.tileLayer.wms('/api/zonemap',{layers:'lt_c_uq111',format:'image/png',transparent:true,version:'1.3.0',tileSize:512,maxZoom:19,minZoom:12,opacity:.7,attribution:'국토교통부 용도지역지구도(VWorld)'});
+   zoneLayer.on('loading',()=>{if(zoneVisible)$('cadastralStatus').textContent='용도지역 불러오는 중…';});
+   zoneLayer.on('load',()=>{if(zoneVisible&&!zoneTileErrorShown)$('cadastralStatus').textContent='용도지역지구도(VWorld) · 사선 무늬는 지정 구역을 나타냅니다';});
+   zoneLayer.on('tileerror',()=>{zoneTileErrorShown=true;$('cadastralStatus').textContent='용도지역을 불러오지 못했습니다. VWorld 연결과 잠시 후 다시 시도를 확인하세요.';});
+  }
+  zoneLayer.addTo(map);parcelLayer?.bringToFront();
+ }else if(zoneLayer&&map.hasLayer(zoneLayer)){map.removeLayer(zoneLayer);if(mapMode==='base')$('cadastralStatus').textContent='';}
+}
+$('zoneToggle').addEventListener('click',()=>toggleZoneLayer(!zoneVisible));
 const selectedCard=document.createElement('section');selectedCard.id='selectedParcelCard';selectedCard.className='selected-parcel-card';selectedCard.hidden=true;selectedCard.setAttribute('aria-live','polite');selectedCard.innerHTML='<span class="selection-badge">✓ 필지 선택 완료</span><strong id="selectedParcelAddress"></strong><p id="selectedParcelFacts"></p><div><button id="zoomSelected" class="button">선택 필지로 이동</button><button id="selectedCadastral" class="button primary">지적도로 보기</button></div>';$('mapPanel').append(selectedCard);
-function setMapMode(mode){if(!map){showView('map');if(!map)return;}mapMode=mode;cadastralFailed=false;if(mode==='cadastral'){if(map.hasLayer(baseLayer))map.removeLayer(baseLayer);}else if(!map.hasLayer(baseLayer))baseLayer.addTo(map);if(mode==='base'){if(cadastralLayer&&map.hasLayer(cadastralLayer))map.removeLayer(cadastralLayer);$('cadastralStatus').textContent='';}else{if(!cadastralLayer){cadastralLayer=L.tileLayer.wms('/api/cadastral',{layers:'lt_c_landinfobasemap',format:'image/png',transparent:true,version:'1.3.0',maxZoom:19,minZoom:14,attribution:'VWorld LX맵(편집지적도)'});cadastralLayer.on('loading',()=>{if(mapMode!=='base')$('cadastralStatus').textContent='지적도 불러오는 중…';});cadastralLayer.on('tileerror',()=>{if(mapMode==='base')return;setMapMode('base');cadastralFailed=true;$('cadastralStatus').textContent='지적도 로드 실패 · 일반지도를 유지합니다. WMS 키·권한을 확인하세요.';});cadastralLayer.on('load',()=>{if(mapMode!=='base'&&!cadastralFailed)$('cadastralStatus').textContent='LX 편집지적도 · 선택 필지는 파란색으로 표시';});}cadastralLayer.addTo(map);if(map.getZoom()<16)map.setZoom(16);cadastralLayer.redraw();}for(const [id,value]of [['mapBase','base'],['mapCadastral','cadastral'],['mapOverlay','overlay']]){$(id).classList.toggle('active',mode===value);$(id).setAttribute('aria-pressed',mode===value);}parcelLayer?.bringToFront();}
+const drawChrome=document.createElement('div');drawChrome.id='drawToolbar';drawChrome.className='draw-toolbar';drawChrome.hidden=true;drawChrome.setAttribute('aria-live','polite');drawChrome.innerHTML='<p id="drawHint" role="status">합칠 필지를 지도에서 순서대로 클릭하세요. 이미 선택된 필지가 있으면 자동으로 포함됩니다.</p><div class="draw-buttons"><button id="drawUndo" type="button" class="button" disabled>↩ 되돌리기</button><button id="drawFinish" type="button" class="button primary" disabled>완료</button></div><button id="drawCancel" type="button" class="button subtle" style="width:100%;margin-top:6px">선택 취소</button>';$('mapPanel').append(drawChrome);
+function clearDrawLayers(){for(const l of drawParcelLayers)map.removeLayer(l);drawParcelLayers=[];}
+function updateDrawButtons(){$('drawFinish').disabled=drawParcels.length<2;$('drawUndo').disabled=!drawParcels.length;$('drawHint').textContent=drawParcels.length?`${drawParcels.length}개 필지 선택됨 · 합칠 필지를 이어서 클릭하세요.`:'합칠 필지를 지도에서 순서대로 클릭하세요. 이미 선택된 필지가 있으면 자동으로 포함됩니다.';}
+function addParcelLayer(feature){const layer=L.geoJSON(feature,{style:{color:'#244cd6',weight:3,fillColor:'#6387f6',fillOpacity:.25},interactive:false}).addTo(map);drawParcelLayers.push(layer);return layer;}
+async function addDrawParcel(latlng){
+ try{
+  const parcel=await json(`/api/parcel?lon=${encodeURIComponent(latlng.lng)}&lat=${encodeURIComponent(latlng.lat)}`);
+  if(!drawMode)return;
+  if(parcel.pnu&&drawParcels.some(p=>p.pnu===parcel.pnu)){toast('이미 선택된 필지입니다.',true);return;}
+  drawParcels.push(parcel);addParcelLayer(parcel.feature);updateDrawButtons();
+ }catch(e){if(drawMode)toast(e.message,true);}
+}
+function undoDrawParcel(){if(!drawParcels.length)return;drawParcels.pop();const layer=drawParcelLayers.pop();if(layer)map.removeLayer(layer);updateDrawButtons();}
+function setDrawMode(on){if(on){showView('map');if(!map)return;}drawMode=on;$('drawToggle').textContent=on?'선택 취소':'여러 필지 선택(합필)';$('drawToggle').setAttribute('aria-pressed',on);$('drawToolbar').hidden=!on;map.getContainer().classList.toggle('drawing-cursor',on);if(on){if(searchMarker){map.removeLayer(searchMarker);searchMarker=null;}selectedCard.hidden=true;if(parcelLayer){map.removeLayer(parcelLayer);parcelLayer=null;}if(mapMode!=='overlay')setMapMode('overlay');drawParcels=[];clearDrawLayers();if(state.site?.pnu&&state.site.feature){drawParcels.push(state.site);addParcelLayer(state.site.feature);}updateDrawButtons();}else{clearDrawLayers();drawParcels=[];syncSelectedParcel();}}
+async function finishDraw(){if(drawParcels.length<2)return;$('drawFinish').disabled=true;$('drawHint').textContent='필지를 합치는 중입니다…';try{const site=await json('/api/site/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({features:drawParcels.map(p=>p.feature)})});parcelVersion++;setSite(site);markDirty();zoomSelection();$('addressStatus').textContent='✓ 여러 필지를 합쳐 선택했습니다.';toast(`${drawParcels.length}개 필지를 합쳤습니다 (${fmt(siteArea(site.polygon))}㎡). 조건을 확인한 후 모듈 배치 생성을 누르세요.`);setDrawMode(false);}catch(e){$('drawHint').textContent=e.message;toast(e.message,true);$('drawFinish').disabled=drawParcels.length<2;}}
+$('drawToggle').addEventListener('click',()=>setDrawMode(!drawMode));
+$('drawFinish').addEventListener('click',finishDraw);
+$('drawUndo').addEventListener('click',undoDrawParcel);
+$('drawCancel').addEventListener('click',()=>setDrawMode(false));
+document.addEventListener('keydown',e=>{
+ if(!drawMode||['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+ if(e.key==='Escape'){e.preventDefault();setDrawMode(false);}
+ else if(e.key==='Backspace'||(e.key.toLowerCase()==='z'&&(e.ctrlKey||e.metaKey))){e.preventDefault();undoDrawParcel();}
+ else if(e.key==='Enter'&&drawParcels.length>=2){e.preventDefault();finishDraw();}
+});
+function setMapMode(mode){if(!map){showView('map');if(!map)return;}mapMode=mode;cadastralFailed=false;if(mode==='cadastral'){if(map.hasLayer(baseLayer))map.removeLayer(baseLayer);}else if(!map.hasLayer(baseLayer))baseLayer.addTo(map);if(mode==='base'){if(cadastralLayer&&map.hasLayer(cadastralLayer))map.removeLayer(cadastralLayer);$('cadastralStatus').textContent='';}else{if(!cadastralLayer){cadastralLayer=L.tileLayer.wms('/api/cadastral',{layers:'lt_c_landinfobasemap',format:'image/png',transparent:true,version:'1.3.0',tileSize:512,maxZoom:19,maxNativeZoom:19,minZoom:14,attribution:'VWorld LX맵(편집지적도)'});cadastralLayer.on('loading',()=>{if(mapMode!=='base')$('cadastralStatus').textContent='지적도 불러오는 중…';});cadastralLayer.on('tileerror',()=>{if(mapMode==='base')return;setMapMode('base');cadastralFailed=true;$('cadastralStatus').textContent='지적도 로드 실패 · 일반지도를 유지합니다. WMS 키·권한을 확인하세요.';});cadastralLayer.on('load',()=>{if(mapMode!=='base'&&!cadastralFailed)$('cadastralStatus').textContent='LX 편집지적도 · 선택 필지는 파란색으로 표시';});}cadastralLayer.addTo(map);if(map.getZoom()<16)map.setZoom(16);cadastralLayer.redraw();}for(const [id,value]of [['mapBase','base'],['mapCadastral','cadastral'],['mapOverlay','overlay']]){$(id).classList.toggle('active',mode===value);$(id).setAttribute('aria-pressed',mode===value);}parcelLayer?.bringToFront();}
 for(const [id,mode]of [['mapBase','base'],['mapCadastral','cadastral'],['mapOverlay','overlay'],['selectedCadastral','cadastral']])$(id).addEventListener('click',()=>setMapMode(mode));
 function zoomSelection(){if(parcelLayer)map.fitBounds(parcelLayer.getBounds(),{paddingTopLeft:[35,140],paddingBottomRight:[35,170],maxZoom:19});}
 $('zoomSelected').addEventListener('click',zoomSelection);
@@ -43,8 +87,21 @@ function openConnection(){ $('vworldDomain').value=state.config?.vworldDomain||l
 $('connectVworld').addEventListener('click',openConnection);
 $('closeVworld').addEventListener('click',()=>$('vworldDialog').close());
 $('vworldDialog').addEventListener('close',()=>$('vworldKey').value='');
-$('vworldForm').addEventListener('submit',async e=>{e.preventDefault();$('submitVworld').disabled=true;$('vworldStatus').textContent='주소 검색과 필지 조회 인증을 확인하고 있습니다…';try{const r=await json('/api/vworld/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('vworldKey').value,domain:$('vworldDomain').value})});state.config.vworld=true;state.config.vworldDomain=r.domain;updateConnection();$('vworldDialog').close();if(!$('mapPanel').hidden)initMap();toast(r.message);}catch(error){$('vworldStatus').textContent=error.message;}finally{$('submitVworld').disabled=false;}});
+$('vworldForm').addEventListener('submit',async e=>{e.preventDefault();$('submitVworld').disabled=true;$('vworldStatus').textContent='주소 검색과 필지 조회 인증을 확인하고 있습니다…';try{const r=await json('/api/vworld/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('vworldKey').value,domain:$('vworldDomain').value})});state.config.vworld=true;state.config.vworldDomain=r.domain;updateConnection();updateZoneToggle();$('vworldDialog').close();if(!$('mapPanel').hidden)initMap();if(state.site?.origin)fetchLanduse(state.site.origin);toast(r.message);}catch(error){$('vworldStatus').textContent=error.message;}finally{$('submitVworld').disabled=false;}});
 const mapConnect=document.createElement('button');mapConnect.className='button primary';mapConnect.textContent='VWorld 키 연결';mapConnect.addEventListener('click',openConnection);$('mapSetup').insertBefore(mapConnect,$('return3d'));
+let landuseVersion=0;
+async function fetchLanduse(origin){
+ const version=++landuseVersion;
+ state.landuse=null;renderLanduse();
+ if(!origin||!state.config.vworld)return;
+ try{const r=await json(`/api/zone?lon=${encodeURIComponent(origin[0])}&lat=${encodeURIComponent(origin[1])}`);if(version!==landuseVersion)return;state.landuse=r;renderLanduse();fillForm({coverage:r.coverage,far:r.farMax});markDirty();toast(`법정 기준으로 건폐율 ${fmt(r.coverage)}%·용적률 ${fmt(r.farMax)}%를 04 속성/기준에 채웠습니다.`);}
+ catch(e){if(version===landuseVersion)toast(e.message,true);}
+}
+function renderLanduse(){const l=state.landuse;$('landuseCard').hidden=!l;if(!l)return;$('landuseZone').textContent=l.zone;$('landuseCoverage').textContent=`≤ ${fmt(l.coverage)}%`;$('landuseFar').textContent=`${fmt(l.farMin)} ~ ${fmt(l.farMax)}%`;$('landuseNote').textContent=l.note;}
+const ADDRESS_HISTORY_KEY='module-ground-address-history';
+function loadAddressHistory(){try{const list=JSON.parse(localStorage.getItem(ADDRESS_HISTORY_KEY)||'[]');return Array.isArray(list)?list.filter(x=>typeof x==='string'):[];}catch{return [];}}
+function saveAddressHistory(query){query=query.trim();if(!query)return;const list=[query,...loadAddressHistory().filter(x=>x!==query)].slice(0,10);try{localStorage.setItem(ADDRESS_HISTORY_KEY,JSON.stringify(list));}catch{}renderAddressHistory();}
+function renderAddressHistory(){$('addressHistory').replaceChildren(...loadAddressHistory().map(a=>{const o=document.createElement('option');o.value=a;return o;}));}
 async function searchAddress(query,type,container,status){
  if(!state.config?.vworld){openConnection();return;}
  query=query.trim();if(query.length<2){status.textContent='주소를 두 글자 이상 입력하세요.';return;}
@@ -60,6 +117,7 @@ async function searchAddress(query,type,container,status){
   const seen=new Set(),items=responses.flatMap(r=>r.items).filter(item=>{const k=`${item.point?.x},${item.point?.y},${item.address?.parcel||item.address?.road}`;if(seen.has(k))return false;seen.add(k);return true;});
   const located=items.find(item=>{const lon=Number(item.point?.x),lat=Number(item.point?.y);return Number.isFinite(lon)&&Number.isFinite(lat)&&lon>=124&&lon<=132&&lat>=33&&lat<=39;});
   if(located)locateAddress(located);
+  if(items.length)saveAddressHistory(query);
   status.textContent=located?`${items.length}개 주소를 찾았습니다. ${items.length>1?'첫 번째 결과를':'검색 위치를'} 지도에 표시했습니다.`:items.length?'주소는 찾았지만 지도 좌표가 없습니다. 다른 주소로 검색하세요.':'검색 결과가 없습니다. 시·군·구와 번지까지 입력해 보세요.';
   for(const item of items){const button=document.createElement('button');button.type='button';const title=document.createElement('strong'),sub=document.createElement('span');title.textContent=item.address?.road||item.address?.parcel||item.title;sub.textContent=item.address?.parcel||'필지 경계 가져오기';button.append(title,sub);button.addEventListener('click',async()=>{container.replaceChildren();status.textContent='필지 경계를 가져오고 있습니다…';showView('map');const ok=await selectParcel(Number(item.point?.x),Number(item.point?.y),item.address?.parcel||item.address?.road||item.title);status.textContent=ok?'필지를 선택했습니다. 건축 조건을 확인한 후 배치를 생성하세요.':'필지를 가져오지 못했습니다. 주소를 다시 검색하세요.';});container.append(button);}
  }catch(e){if(version===searchVersion){status.textContent=e.message;toast(e.message,true);}}
@@ -69,11 +127,11 @@ $('siteAddress').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDef
 const fmt=(n,d=1)=>Number(n).toLocaleString('ko-KR',{maximumFractionDigits:d});
 function toast(message,error=false){$('toast').textContent=message;$('toast').classList.toggle('error',error);$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5000);}
 async function json(url,options={}){const response=await fetch(url,{...options,signal:options.signal||AbortSignal.timeout(30000)});let data;try{data=await response.json();}catch{throw new Error('서버 응답을 읽지 못했습니다. 서버 실행 상태를 확인하세요.');}if(!response.ok)throw Object.assign(new Error(data.error||'요청을 완료하지 못했습니다.'),{code:data.code});return data;}
-function paramsFromForm(){return Object.fromEntries([...form.querySelectorAll('input[name]')].map(el=>[el.name,Number(el.value)]));}
+function paramsFromForm(){return Object.fromEntries([...form.elements].filter(el=>el.name).map(el=>[el.name,Number(el.value)]));}
 function fillForm(p){for(const [key,value]of Object.entries(p)){const el=form.elements.namedItem(key);if(el)el.value=value;}}
 function active(){return state.result?.alternatives.find(a=>a.id===state.active)||state.result?.alternatives[0];}
 function siteArea(polygon){const a=r=>Math.abs(r.reduce((s,p,i)=>{const q=r[(i+1)%r.length];return s+p[0]*q[1]-q[0]*p[1]},0))/2;return a(polygon[0])-polygon.slice(1).reduce((s,r)=>s+a(r),0);}
-function setSite(site){state.site=site;$('projectTitle').textContent=site.name;$('sourceBadge').textContent=site.source==='sample'?'예시 프로젝트':'필지 선택 완료';$('siteArea').replaceChildren(document.createTextNode(fmt(siteArea(site.polygon))+' '));const unit=document.createElement('small');unit.textContent='㎡';$('siteArea').append(unit);$('siteDescription').textContent=site.source==='sample'?'실제 주소와 관계없는 가상 경계입니다.':`✓ 선택 완료 · PNU ${site.pnu||'미제공'} · 규제값은 직접 확인하세요.`;$('sampleSelect').value=site.sampleId||'';syncSelectedParcel();}
+function setSite(site){state.site=site;$('projectTitle').textContent=site.name;$('sourceBadge').textContent=site.source==='sample'?'예시 프로젝트':'필지 선택 완료';$('siteArea').replaceChildren(document.createTextNode(fmt(siteArea(site.polygon))+' '));const unit=document.createElement('small');unit.textContent='㎡';$('siteArea').append(unit);$('siteDescription').textContent=site.source==='sample'?'실제 주소와 관계없는 가상 경계입니다.':`✓ 선택 완료 · PNU ${site.pnu||'미제공'} · 규제값은 직접 확인하세요.`;$('sampleSelect').value=site.sampleId||'';syncSelectedParcel();if(site.origin)fetchLanduse(site.origin);else{state.landuse=null;renderLanduse();}}
 function markDirty(){requestVersion++;state.dirty=true;document.body.classList.add('dirty');$('dirtyNote').textContent='조건이 변경되었습니다. 배치를 다시 생성하세요.';$('saveState').textContent='변경사항 있음';document.querySelector('.live-dot').textContent='이전 결과';$('generate').disabled=false;$('generate').innerHTML='<span aria-hidden="true">▦</span> 모듈 배치 생성';$('exportCsv').disabled=true;}
 function projectData(){return {version:1,name:state.site.name,site:state.site,params:paramsFromForm(),active:state.active,savedAt:new Date().toISOString()};}
 function persist(){try{localStorage.setItem('module-ground-project',JSON.stringify(projectData()));$('saveState').textContent='이 기기에 저장됨';}catch{toast('브라우저 저장 공간이 부족합니다. 프로젝트 파일로 저장하세요.',true);}}
@@ -107,7 +165,7 @@ function render(reset=false){
 function showView(type){const isMap=type==='map';$('viewport').hidden=isMap;$('mapPanel').hidden=!isMap;for(const [id,on]of [['view3d',!isMap],['viewMap',isMap]]){$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',on);}$('planView').disabled=isMap;$('isoView').disabled=isMap;$('resetView').disabled=isMap;if(isMap)initMap();else viewport?.resize();}
 function initMap(){
  $('mapSetup').hidden=state.config.vworld;if(!state.config.vworld)return;
- if(!map){map=L.map('map',{zoomControl:false}).setView([37.5445,127.055],17);L.control.zoom({position:'bottomright'}).addTo(map);let tileErrorShown=false;baseLayer=L.tileLayer('/api/tile/{z}/{x}/{y}',{maxZoom:19,attribution:'© <a href="https://www.vworld.kr" target="_blank" rel="noopener">VWorld</a>'}).on('tileerror',()=>{if(!tileErrorShown){tileErrorShown=true;toast('배경지도를 불러오지 못했습니다. VWorld 지도 권한과 등록 URL을 확인하세요.',true);}}).addTo(map);map.on('click',e=>selectParcel(e.latlng.lng,e.latlng.lat));syncSelectedParcel();zoomSelection();}
+ if(!map){map=L.map('map',{zoomControl:false,zoomSnap:0.25,zoomDelta:0.5}).setView([37.5445,127.055],17);L.control.zoom({position:'bottomright'}).addTo(map);let tileErrorShown=false;baseLayer=L.tileLayer('/api/tile/{z}/{x}/{y}',{maxZoom:19,attribution:'© <a href="https://www.vworld.kr" target="_blank" rel="noopener">VWorld</a>'}).on('tileerror',()=>{if(!tileErrorShown){tileErrorShown=true;toast('배경지도를 불러오지 못했습니다. VWorld 지도 권한과 등록 URL을 확인하세요.',true);}}).addTo(map);map.on('click',e=>{if(!drawMode){selectParcel(e.latlng.lng,e.latlng.lat);return;}addDrawParcel(e.latlng);});syncSelectedParcel();zoomSelection();}
  requestAnimationFrame(()=>map.invalidateSize());
 }
 async function selectParcel(lon,lat,address){
@@ -131,15 +189,96 @@ $('openProject').addEventListener('click',()=>$('projectFile').click());
 async function validateProject(data){if(data?.version!==1||!data.site?.polygon||!data.params||typeof data.site.name!=='string'||data.site.name.length>200)throw new Error('지원하는 프로젝트 파일이 아닙니다.');await json('/api/solve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({polygon:data.site.polygon,params:data.params})});return data;}
 $('projectFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{if(file.size>200000)throw new Error('프로젝트 파일은 200KB 이하여야 합니다.');const data=await validateProject(JSON.parse(await file.text()));parcelVersion++;requestVersion++;fillForm({...state.config.defaults,...data.params});setSite(data.site);state.active=data.active||'maximum';await generate({reset:true});showView('3d');toast('프로젝트를 불러왔습니다.');}catch(error){toast(error.message,true);}finally{e.target.value='';}});
 $('exportCsv').addEventListener('click',()=>{const a=active();if(!a||state.dirty)return;const rows=[['모듈 ID','층','폭(m)','길이(m)','반복 높이(m)','배치안'],...a.modules.map(m=>[m.id,m.level,state.params.width,state.params.length,state.params.moduleHeight,a.name])];download('\uFEFF'+rows.map(r=>r.join(',')).join('\r\n'),'module-schedule.csv','text/csv;charset=utf-8');toast('모듈 목록을 CSV로 저장했습니다.');});
+const ROUTES=['summary','site','units','cores','building','layout'];
+const ROUTE_TITLES={site:['대지 분석','주소를 검색하거나 지도에서 필지를 선택하세요.'],units:['단위세대 속성','모듈 폭·길이·높이와 세대 구성을 정의하세요.'],layout:['배치 조건','동 속성을 확인하고 배치를 생성하세요.']};
+const STAGE_KEY='module-ground-stage-status';
+const STAGE_DEFAULT={summary:false,site:false,units:false,cores:false,building:false,layout:false};
+function loadStageStatus(){try{return {...STAGE_DEFAULT,...JSON.parse(localStorage.getItem(STAGE_KEY)||'{}')};}catch{return {...STAGE_DEFAULT};}}
+function saveStageStatus(s){try{localStorage.setItem(STAGE_KEY,JSON.stringify(s));}catch{}}
+let stageStatus=loadStageStatus();
+function setStageComplete(stage,done){stageStatus[stage]=done;saveStageStatus(stageStatus);renderStageStatus();if(currentRoute==='summary')renderSummary();}
+function renderStageStatus(){
+ document.querySelectorAll('.nav-status').forEach(el=>el.classList.toggle('done',!!stageStatus[el.dataset.stage]));
+ document.querySelectorAll('[data-stage-button]').forEach(btn=>{const done=!!stageStatus[btn.dataset.stageButton];btn.textContent=done?'✓ 검토 완료됨':'검토 완료로 표시';btn.classList.toggle('done',done);});
+}
+document.querySelectorAll('[data-stage-button]').forEach(btn=>btn.addEventListener('click',()=>setStageComplete(btn.dataset.stageButton,!stageStatus[btn.dataset.stageButton])));
+renderStageStatus();
+
+let currentRoute='summary';
+function navigate(route){if(!ROUTES.includes(route))route='summary';location.hash='/'+route;}
+function applyRoute(route){
+ if(!ROUTES.includes(route))route='summary';
+ currentRoute=route;
+ $('workspace').className='workspace route-'+route;
+ for(const el of form.querySelectorAll('[data-route]'))el.hidden=el.dataset.route!==route;
+ $('settingsAside').hidden=!['site','units','layout'].includes(route);
+ $('canvasPanel').hidden=!['site','layout'].includes(route);
+ $('canvasPanel').classList.toggle('map-only',route==='site');
+ $('resultsAside').hidden=route!=='layout';
+ $('summaryPanel').hidden=route!=='summary';
+ $('coresPanel').hidden=route!=='cores';
+ $('buildingPanel').hidden=route!=='building';
+ if(ROUTE_TITLES[route]){$('panelTitle').textContent=ROUTE_TITLES[route][0];$('panelSubtitle').textContent=ROUTE_TITLES[route][1];}
+ document.querySelectorAll('.nav-item').forEach(btn=>{const on=btn.dataset.route===route;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on);});
+ if(route==='site')showView('map');
+ if(['site','layout'].includes(route))requestAnimationFrame(()=>{viewport?.resize();map?.invalidateSize();});
+ if(route==='summary')renderSummary();
+ if(route==='building')renderBuildingLibrary();
+ if(route==='units')renderUnitLibrary();
+}
+document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>navigate(btn.dataset.route)));
+window.addEventListener('hashchange',()=>applyRoute((location.hash.match(/^#\/(\w+)/)||[])[1]));
+
+const UNIT_TYPES_KEY='module-ground-unit-types';
+const unitFieldNames=['width','length','moduleHeight','gap','modulesPerUnit'];
+function loadUnitTypes(){try{const list=JSON.parse(localStorage.getItem(UNIT_TYPES_KEY)||'[]');return Array.isArray(list)?list:[];}catch{return [];}}
+function saveUnitTypes(list){try{localStorage.setItem(UNIT_TYPES_KEY,JSON.stringify(list));}catch{}}
+let activeUnitTypeId=null;
+function renderUnitLibrary(){
+ const list=loadUnitTypes();
+ $('unitTypeSelect').replaceChildren(...list.map(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=t.name;return o;}));
+ if(activeUnitTypeId&&list.some(t=>t.id===activeUnitTypeId))$('unitTypeSelect').value=activeUnitTypeId;
+ else if(list.length){activeUnitTypeId=list[0].id;$('unitTypeSelect').value=activeUnitTypeId;}
+ else activeUnitTypeId=null;
+ $('unitTypeDelete').disabled=!list.length;
+}
+$('unitTypeSelect').addEventListener('change',()=>{activeUnitTypeId=$('unitTypeSelect').value;const t=loadUnitTypes().find(x=>x.id===activeUnitTypeId);if(t)fillForm(t.values);});
+$('unitTypeNew').addEventListener('click',()=>{const name=prompt('새 타입 이름을 입력하세요.','타입 '+String.fromCharCode(65+loadUnitTypes().length));if(!name)return;const list=loadUnitTypes();const values=Object.fromEntries(unitFieldNames.map(k=>[k,Number(form.elements.namedItem(k).value)]));const t={id:'unit-'+Date.now(),name,values};list.push(t);saveUnitTypes(list);activeUnitTypeId=t.id;renderUnitLibrary();toast(`"${name}" 타입을 저장했습니다.`);});
+$('unitTypeDelete').addEventListener('click',()=>{if(!activeUnitTypeId)return;saveUnitTypes(loadUnitTypes().filter(t=>t.id!==activeUnitTypeId));activeUnitTypeId=null;renderUnitLibrary();});
+form.addEventListener('input',e=>{if(!activeUnitTypeId||!unitFieldNames.includes(e.target.name))return;const list=loadUnitTypes();const t=list.find(x=>x.id===activeUnitTypeId);if(t){t.values[e.target.name]=Number(e.target.value);saveUnitTypes(list);}});
+
+function renderBuildingLibrary(){
+ const list=loadUnitTypes();
+ $('buildingUnitLibrary').replaceChildren(...(list.length?list:[{name:'등록된 단위세대 타입 없음'}]).map(t=>{const div=document.createElement('div');div.className='editor-list-item static';div.textContent=t.name;return div;}));
+}
+
+function renderSummary(){
+ $('summaryProjectName').textContent=state.site?.name||'—';
+ $('summaryProjectAddress').textContent=state.site?.source==='sample'?'예시 대지 · 실제 주소 아님':state.site?.name||'—';
+ const stages=[['site','대지'],['units','단위세대'],['cores','코어'],['building','동평면'],['layout','배치']];
+ $('stageTrack').replaceChildren(...stages.map(([key,label])=>{const span=document.createElement('span');span.className='stage-pill'+(stageStatus[key]?' done':'');span.textContent=(stageStatus[key]?'✓ ':'')+label;span.addEventListener('click',()=>navigate(key));return span;}));
+ const a=active();
+ $('summaryKpis').replaceChildren(...[['대지면적',state.site?fmt(siteArea(state.site.polygon))+'㎡':'—'],['건폐율',a?fmt(a.coverage)+'%':'—'],['용적률',a?fmt(a.far)+'%':'—'],['세대수',a?fmt(a.units,0)+'세대':'—']].map(([label,value])=>{const div=document.createElement('div');div.className='kpi-card';div.innerHTML=`<span>${label}</span><strong>${value}</strong>`;return div;}));
+ $('summaryPreview').textContent=a?`${a.name} · ${a.levels.length}층 · 모듈 ${fmt(a.count,0)}개`:'배치 결과가 없습니다.';
+ const issues=[];
+ if(!stageStatus.site)issues.push('대지 분석 검토가 완료되지 않았습니다.');
+ if(!stageStatus.units)issues.push('단위세대 속성 검토가 완료되지 않았습니다.');
+ if(!a)issues.push('아직 생성된 배치안이 없습니다. 5 Site Layout에서 배치를 생성하세요.');
+ if(state.landuse)issues.push(`법정 상한 참고: 건폐율 ≤${state.landuse.coverage}% · 용적률 ${state.landuse.farMin}~${state.landuse.farMax}%`);
+ $('summaryIssues').replaceChildren(...(issues.length?issues:['미검토 범위가 없습니다.']).map(t=>{const li=document.createElement('li');li.textContent=t;return li;}));
+}
+$('summaryContinue').addEventListener('click',()=>navigate(['site','units','cores','building','layout'].find(k=>!stageStatus[k])||'layout'));
+
 async function boot(){
  try{
-  state.config=await json('/api/config');updateConnection();
+  state.config=await json('/api/config');updateConnection();updateZoneToggle();renderAddressHistory();
   const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='지도에서 선택한 필지';placeholder.disabled=true;$('sampleSelect').append(placeholder);
   for(const s of state.config.samples){const o=document.createElement('option');o.value=s.id;o.textContent=s.name;$('sampleSelect').append(o);}
   fillForm(state.config.defaults);const sample=state.config.samples[0];setSite({name:sample.name,source:'sample',sampleId:sample.id,polygon:[sample.ring]});
   try{viewport=createViewport($('viewport'),module=>{const tip=$('moduleTooltip');tip.replaceChildren();tip.hidden=!module;if(!module)return;const title=document.createElement('strong');title.textContent=module.id;const p=document.createElement('div');p.textContent=`${state.params.width} × ${state.params.length} × ${state.params.moduleHeight} m`;const note=document.createElement('div');note.textContent=`${module.level}층 · ${fmt(state.params.width*state.params.length)}㎡ 외곽 면적`;tip.append(title,p,note);});}catch{ $('sceneError').hidden=false;$('sceneError').textContent='3D 표시를 시작할 수 없습니다. WebGL을 지원하는 브라우저에서 하드웨어 가속을 켜주세요. 배치 수치 계산은 계속 사용할 수 있습니다.';}
   try{const raw=localStorage.getItem('module-ground-project');if(raw){const data=await validateProject(JSON.parse(raw));fillForm({...state.config.defaults,...data.params});setSite(data.site);state.active=data.active||'maximum';}}catch{toast('저장된 프로젝트를 복원하지 못해 예시 대지를 열었습니다.',true);}
   await generate({reset:true});
+  applyRoute((location.hash.match(/^#\/(\w+)/)||[])[1]);
  }catch(e){toast(e.message,true);$('sceneError').hidden=false;$('sceneError').textContent='초기 데이터를 불러오지 못했습니다. 서버를 실행한 후 새로고침하세요.';}
 }
 boot();
