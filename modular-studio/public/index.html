@@ -70,14 +70,35 @@
       <div class="field-grid thirds">
        <label>폭<div class="number-field"><input name="width" type="number" min="1" max="15" step="0.1" required><span>m</span></div></label>
        <label>길이<div class="number-field"><input name="length" type="number" min="1" max="25" step="0.1" required><span>m</span></div></label>
-       <label>반복 높이<div class="number-field"><input name="moduleHeight" type="number" min="2" max="6" step="0.1" required><span>m</span></div></label>
+       <label>높이<div class="number-field"><input name="moduleHeight" type="number" min="2" max="6" step="0.1" required><span>m</span></div></label>
       </div>
       <p class="field-note">초기값은 예시입니다. 높이는 층간 접합을 포함한 반복 높이로 입력하세요.</p>
       <details open><summary>접합·공용공간 설정</summary><div class="field-grid detail-fields">
        <label>모듈 간격<div class="number-field"><input name="gap" type="number" min="0" max="1" step="0.01" required><span>m</span></div></label>
-       <label>세대당 모듈<div class="number-field"><input name="modulesPerUnit" type="number" min="1" max="10" step="1" required><span>개</span></div></label>
+       <label>세대당 모듈<div class="number-field select-field"><select name="modulesPerUnit" required><option value="1">1개</option><option value="2">2개</option></select></div></label>
       </div></details>
+
+      <div class="section-heading sub"><h2>구성 공간 설정</h2><span class="badge muted">타입은 샘플 · CAD 라이브러리 연동 예정</span></div>
+      <div class="unit-spaces">
+       <div class="unit-space-row"><span class="unit-space-name">PD실</span><div class="number-field small"><input id="spacePdQty" type="number" min="0" max="9" step="1" value="1"><span>개</span></div><select id="spacePdType" class="unit-space-type"></select></div>
+       <div class="unit-space-row"><span class="unit-space-name">욕실</span><div class="number-field small"><input id="spaceBathQty" type="number" min="0" max="9" step="1" value="1"><span>개</span></div><select id="spaceBathType" class="unit-space-type"></select></div>
+       <div class="unit-space-row"><span class="unit-space-name">현관</span><div class="number-field small"><input id="spaceEntranceQty" type="number" min="0" max="9" step="1" value="1"><span>개</span></div><select id="spaceEntranceType" class="unit-space-type"></select></div>
+      </div>
+
+      <div class="section-heading sub"><h2>모듈 이미지</h2></div>
+      <div class="unit-preview-grid">
+       <div class="unit-preview-card"><span class="unit-preview-label">2D 평면</span><div id="unitPlan2d" class="unit-plan-2d"></div></div>
+       <div class="unit-preview-card"><span class="unit-preview-label">3D 모델</span><div id="unitModel3d" class="unit-plan-3d"></div></div>
+      </div>
+
       <button type="button" class="button review-complete" data-stage-button="units">검토 완료로 표시</button>
+
+      <div class="section-heading sub"><h2>도면 다운로드</h2></div>
+      <div class="unit-download-row">
+       <button type="button" id="unitDownloadDxf" class="button">.dxf로 다운받기</button>
+       <button type="button" id="unitDownloadSkp" class="button subtle" disabled title="SketchUp 연동은 추후 지원 예정">.skp로 다운받기</button>
+      </div>
+      <p class="field-note">.dxf는 폭·길이 외곽선을 담은 AutoCAD 호환 도면입니다(실제 .dwg 저장 기능은 상용 SDK 연동이 필요해 이번 범위에서 제외). .skp(SketchUp) 내보내기는 추후 연동 예정입니다.</p>
      </section>
      <div class="generate-area" data-route="layout"><button class="button primary generate" id="generate" type="submit"><span aria-hidden="true">▦</span> 모듈 배치 생성</button><p id="dirtyNote">입력 조건 기준의 배치 후보입니다.</p></div>
     </form>

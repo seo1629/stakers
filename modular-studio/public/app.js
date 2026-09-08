@@ -1,4 +1,5 @@
 import {createViewport} from './viewport.js';
+import * as THREE from 'three';
 const $=id=>document.getElementById(id),form=$('designForm');
 const state={config:null,site:null,params:null,result:null,active:'maximum',dirty:false,landuse:null};
 let viewport,map,parcelLayer,requestVersion=0,parcelVersion=0,searchVersion=0,toastTimer;
@@ -231,6 +232,13 @@ window.addEventListener('hashchange',()=>applyRoute((location.hash.match(/^#\/(\
 
 const UNIT_TYPES_KEY='module-ground-unit-types';
 const unitFieldNames=['width','length','moduleHeight','gap','modulesPerUnit'];
+const UNIT_SPACE_TYPES=['기본형','슬림형','대형'];
+const unitSpaceFields=[['pd','spacePdQty','spacePdType'],['bath','spaceBathQty','spaceBathType'],['entrance','spaceEntranceQty','spaceEntranceType']];
+function populateSpaceTypeSelects(){unitSpaceFields.forEach(([,,typeId])=>{$(typeId).replaceChildren(...UNIT_SPACE_TYPES.map(name=>{const o=document.createElement('option');o.value=name;o.textContent=name;return o;}));});}
+populateSpaceTypeSelects();
+function defaultSpaces(){return Object.fromEntries(unitSpaceFields.map(([key])=>[key,{qty:1,type:UNIT_SPACE_TYPES[0]}]));}
+function loadSpacesIntoForm(spaces){const s={...defaultSpaces(),...spaces};unitSpaceFields.forEach(([key,qtyId,typeId])=>{$(qtyId).value=s[key]?.qty??1;$(typeId).value=s[key]?.type||UNIT_SPACE_TYPES[0];});}
+function readSpacesFromForm(){return Object.fromEntries(unitSpaceFields.map(([key,qtyId,typeId])=>[key,{qty:Number($(qtyId).value)||0,type:$(typeId).value}]));}
 function loadUnitTypes(){try{const list=JSON.parse(localStorage.getItem(UNIT_TYPES_KEY)||'[]');return Array.isArray(list)?list:[];}catch{return [];}}
 function saveUnitTypes(list){try{localStorage.setItem(UNIT_TYPES_KEY,JSON.stringify(list));}catch{}}
 let activeUnitTypeId=null;
@@ -241,11 +249,102 @@ function renderUnitLibrary(){
  else if(list.length){activeUnitTypeId=list[0].id;$('unitTypeSelect').value=activeUnitTypeId;}
  else activeUnitTypeId=null;
  $('unitTypeDelete').disabled=!list.length;
+ loadSpacesIntoForm(list.find(t=>t.id===activeUnitTypeId)?.spaces);
+ renderUnitPreview();
 }
-$('unitTypeSelect').addEventListener('change',()=>{activeUnitTypeId=$('unitTypeSelect').value;const t=loadUnitTypes().find(x=>x.id===activeUnitTypeId);if(t)fillForm(t.values);});
-$('unitTypeNew').addEventListener('click',()=>{const name=prompt('새 타입 이름을 입력하세요.','타입 '+String.fromCharCode(65+loadUnitTypes().length));if(!name)return;const list=loadUnitTypes();const values=Object.fromEntries(unitFieldNames.map(k=>[k,Number(form.elements.namedItem(k).value)]));const t={id:'unit-'+Date.now(),name,values};list.push(t);saveUnitTypes(list);activeUnitTypeId=t.id;renderUnitLibrary();toast(`"${name}" 타입을 저장했습니다.`);});
+$('unitTypeSelect').addEventListener('change',()=>{activeUnitTypeId=$('unitTypeSelect').value;const t=loadUnitTypes().find(x=>x.id===activeUnitTypeId);if(t){fillForm(t.values);loadSpacesIntoForm(t.spaces);renderUnitPreview();}});
+$('unitTypeNew').addEventListener('click',()=>{const name=prompt('새 타입 이름을 입력하세요.','타입 '+String.fromCharCode(65+loadUnitTypes().length));if(!name)return;const list=loadUnitTypes();const values=Object.fromEntries(unitFieldNames.map(k=>[k,Number(form.elements.namedItem(k).value)]));const spaces=readSpacesFromForm();const t={id:'unit-'+Date.now(),name,values,spaces};list.push(t);saveUnitTypes(list);activeUnitTypeId=t.id;renderUnitLibrary();toast(`"${name}" 타입을 저장했습니다.`);});
 $('unitTypeDelete').addEventListener('click',()=>{if(!activeUnitTypeId)return;saveUnitTypes(loadUnitTypes().filter(t=>t.id!==activeUnitTypeId));activeUnitTypeId=null;renderUnitLibrary();});
 form.addEventListener('input',e=>{if(!activeUnitTypeId||!unitFieldNames.includes(e.target.name))return;const list=loadUnitTypes();const t=list.find(x=>x.id===activeUnitTypeId);if(t){t.values[e.target.name]=Number(e.target.value);saveUnitTypes(list);}});
+form.addEventListener('input',e=>{if(['width','length','moduleHeight','modulesPerUnit'].includes(e.target.name))renderUnitPreview();});
+unitSpaceFields.forEach(([key,qtyId,typeId])=>{[qtyId,typeId].forEach(id=>{$(id).addEventListener('input',()=>{if(activeUnitTypeId){const list=loadUnitTypes();const t=list.find(x=>x.id===activeUnitTypeId);if(t){t.spaces={...defaultSpaces(),...t.spaces,[key]:{qty:Number($(qtyId).value)||0,type:$(typeId).value}};saveUnitTypes(list);}}renderUnitPreview();});});});
+
+const MODULE_JOINT_GAP=0.02;
+function draw2dPlan(width,length,spaces,modulesPerUnit){
+ const pad=6,totalWidthM=modulesPerUnit===2?2*width+MODULE_JOINT_GAP:width,scale=140/Math.max(totalWidthM,length,1);
+ const w=Math.max(width*scale,10),l=Math.max(length*scale,10),gapPx=MODULE_JOINT_GAP*scale;
+ const rows=[['pd','PD실','#dce3f7'],['bath','욕실','#c0dff0'],['entrance','현관','#f0dcc0']].filter(([k])=>spaces[k]?.qty>0);
+ let blocks='';
+ const blockH=rows.length?Math.min(l*.28,(l-8)/rows.length):0;
+ rows.forEach(([key,label,color],i)=>{
+  const bw=w*.34,bh=blockH,by=pad+4+i*(bh+4);
+  blocks+=`<rect x="${pad+3}" y="${by}" width="${bw}" height="${bh}" fill="${color}" stroke="#8294d8"/><text x="${pad+3+bw/2}" y="${by+bh/2+3}" text-anchor="middle" font-size="7" fill="#4b5a86">${label}${spaces[key].qty>1?' x'+spaces[key].qty:''}</text>`;
+ });
+ let secondModule='',centerline='';
+ if(modulesPerUnit===2){
+  const x2=pad+w+gapPx,cx=pad+w+gapPx/2;
+  secondModule=`<rect x="${x2}" y="${pad}" width="${w}" height="${l}" fill="#f5f7fc" stroke="#8294d8" stroke-width="1.5"/>`;
+  centerline=`<line x1="${cx}" y1="${pad-3}" x2="${cx}" y2="${pad+l+3}" stroke="#d1483f" stroke-width="1" stroke-dasharray="6 2 1 2"/>`;
+ }
+ const totalW=modulesPerUnit===2?w*2+gapPx:w;
+ $('unitPlan2d').innerHTML=`<svg viewBox="0 0 ${totalW+pad*2} ${l+pad*2}" aria-label="모듈 2D 평면"><rect x="${pad}" y="${pad}" width="${w}" height="${l}" fill="#f5f7fc" stroke="#8294d8" stroke-width="1.5"/>${secondModule}${blocks}${centerline}</svg>`;
+}
+let unitPreviewScene=null;
+function ensureUnitPreviewScene(){
+ if(unitPreviewScene)return unitPreviewScene;
+ const container=$('unitModel3d');
+ const scene=new THREE.Scene();scene.background=new THREE.Color('#f1f3f8');
+ const camera=new THREE.PerspectiveCamera(40,1,.1,100);
+ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));container.appendChild(renderer.domElement);
+ scene.add(new THREE.HemisphereLight(0xffffff,0xb4bfd5,2.6));
+ const sun=new THREE.DirectionalLight(0xffffff,2.4);sun.position.set(4,6,5);scene.add(sun);
+ const geometry=new THREE.BoxGeometry(1,1,1);
+ const material=new THREE.MeshStandardMaterial({color:'#a8b7e3',roughness:.75});
+ const group=new THREE.Group();scene.add(group);
+ const makeModule=()=>{const mesh=new THREE.Mesh(geometry,material);mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry),new THREE.LineBasicMaterial({color:'#4b5a86'})));group.add(mesh);return mesh;};
+ const meshA=makeModule(),meshB=makeModule();
+ const focus={center:new THREE.Vector3(),radius:6,height:3};
+ function resize(){const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+ new ResizeObserver(resize).observe(container);
+ let angle=0;
+ function animate(){requestAnimationFrame(animate);angle+=.006;const r=focus.radius;camera.position.set(focus.center.x+Math.sin(angle)*r,focus.center.y+focus.height*.55+r*.25,focus.center.z+Math.cos(angle)*r);camera.lookAt(focus.center);renderer.render(scene,camera);}
+ animate();
+ unitPreviewScene={meshA,meshB,focus,resize};
+ return unitPreviewScene;
+}
+function update3dModel(width,length,height,modulesPerUnit){
+ const {meshA,meshB,focus,resize}=ensureUnitPreviewScene();
+ meshA.position.set(0,0,0);meshA.scale.set(width,height,length);
+ let totalWidth=width;
+ if(modulesPerUnit===2){
+  meshB.visible=true;meshB.scale.set(width,height,length);meshB.position.set(width+MODULE_JOINT_GAP,0,0);
+  totalWidth=2*width+MODULE_JOINT_GAP;
+ } else {
+  meshB.visible=false;
+ }
+ focus.center.set(totalWidth/2,height/2,length/2);
+ focus.radius=Math.max(totalWidth,length)*1.15+2.2;
+ focus.height=height;
+ resize();
+}
+function renderUnitPreview(){
+ const width=Number(form.elements.namedItem('width')?.value)||6;
+ const length=Number(form.elements.namedItem('length')?.value)||9;
+ const height=Number(form.elements.namedItem('moduleHeight')?.value)||3;
+ const modulesPerUnit=Number(form.elements.namedItem('modulesPerUnit')?.value)||1;
+ draw2dPlan(width,length,readSpacesFromForm(),modulesPerUnit);
+ update3dModel(width,length,height,modulesPerUnit);
+}
+function dxfLtype(name,desc,dashes){let s=`0\nLTYPE\n2\n${name}\n70\n0\n3\n${desc}\n72\n65\n73\n${dashes.length}\n40\n${dashes.reduce((s,d)=>s+Math.abs(d),0)}\n`;dashes.forEach(d=>{s+=`49\n${d}\n74\n0\n`;});return s;}
+function dxfLine(x1,y1,x2,y2,layer,extra=''){return `0\nLINE\n8\n${layer}\n${extra}10\n${x1}\n20\n${y1}\n30\n0\n11\n${x2}\n21\n${y2}\n31\n0\n`;}
+function dxfRect(x0,y0,x1,y1,layer){return dxfLine(x0,y0,x1,y0,layer)+dxfLine(x1,y0,x1,y1,layer)+dxfLine(x1,y1,x0,y1,layer)+dxfLine(x0,y1,x0,y0,layer);}
+function generateUnitDXF(width,length,modulesPerUnit){
+ const rects=modulesPerUnit===2?[[0,0,width,length],[width+MODULE_JOINT_GAP,0,2*width+MODULE_JOINT_GAP,length]]:[[0,0,width,length]];
+ let entities=rects.map(([x0,y0,x1,y1])=>dxfRect(x0,y0,x1,y1,'MODULE')).join('');
+ if(modulesPerUnit===2){
+  const cx=width+MODULE_JOINT_GAP/2;
+  entities+=dxfLine(cx,0,cx,length,'CENTER','62\n1\n6\nCENTER\n');
+ }
+ const tables=`0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n2\n${dxfLtype('CONTINUOUS','Solid line',[])}${dxfLtype('CENTER','Center ____ _ ____ _ ____ _',[1.25,-0.25,0.25,-0.25])}0\nENDTAB\n0\nENDSEC\n`;
+ return `0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC\n${tables}0\nSECTION\n2\nENTITIES\n${entities}0\nENDSEC\n0\nEOF\n`;
+}
+$('unitDownloadDxf').addEventListener('click',()=>{
+ const width=Number(form.elements.namedItem('width')?.value)||6;
+ const length=Number(form.elements.namedItem('length')?.value)||9;
+ const modulesPerUnit=Number(form.elements.namedItem('modulesPerUnit')?.value)||1;
+ download(generateUnitDXF(width,length,modulesPerUnit),'module-unit.dxf','application/dxf');
+ toast('.dxf 파일을 내려받았습니다.');
+});
 
 function renderBuildingLibrary(){
  const list=loadUnitTypes();
